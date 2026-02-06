@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Spinner</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #111; overflow: hidden; font-family: system-ui, sans-serif; }
+    canvas { display: block; }
+    #controls {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(10px);
+      padding: 4px 8px;
+      border-radius: 0;
+      border: 1px solid rgba(255,255,255,0.1);
+      z-index: 10;
+    }
+    #controls label { color: #aaa; font-size: 13px; }
+    #controls input[type="range"] { width: 120px; accent-color: #fff; }
+    #controls button {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: #fff;
+      padding: 4px 12px;
+      border-radius: 0;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    #controls button:hover { background: rgba(255,255,255,0.2); }
+    #camera-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(10px);
+      padding: 6px 10px;
+      border-radius: 0;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .cam-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .cam-row label { color: #aaa; font-size: 12px; width: 55px; text-align: right; }
+    .cam-row input[type="range"] { width: 140px; accent-color: #fff; }
+    .cam-val { color: #666; font-size: 11px; width: 36px; font-variant-numeric: tabular-nums; }
+    #model-controls {
+      position: fixed;
+      top: 24px;
+      left: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(10px);
+      padding: 6px 10px;
+      border-radius: 0;
+      border: 1px solid rgba(255,255,255,0.1);
+      z-index: 10;
+    }
+    .panel-label { color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
+    .checkbox-label {
+      color: #aaa;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      cursor: pointer;
+    }
+    .checkbox-label input[type="checkbox"] { accent-color: #fff; }
+    .spin-row { gap: 12px; }
+    #right-panels {
+      position: fixed;
+      top: 24px;
+      right: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      z-index: 10;
+    }
+    #light-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(10px);
+      padding: 6px 10px;
+      border-radius: 0;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    #ui-hint {
+      position: fixed;
+      bottom: 8px;
+      right: 8px;
+      color: rgba(255,255,255,0.25);
+      font-size: 11px;
+      z-index: 11;
+      pointer-events: none;
+    }
+    .ui-hidden #controls,
+    .ui-hidden #model-controls,
+    .ui-hidden #right-panels { display: none; }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <button id="import-btn">Import Model</button>
+    <input type="file" id="import-file" accept=".glb,.gltf,.obj" style="display:none">
+    <label>Color</label>
+    <input type="color" id="mat-color" value="#8B7355">
+    <label>BG</label>
+    <input type="color" id="bg-color" value="#111111">
+    <button id="dome-btn">Dome Image</button>
+    <input type="file" id="dome-file" accept="image/*" style="display:none">
+    <button id="dome-clear" style="display:none">Clear Dome</button>
+    <label id="dome-rot-label" style="display:none">Rotate</label>
+    <input type="range" id="dome-rot" min="0" max="360" step="1" value="0" style="display:none">
+  </div>
+  <div id="model-controls">
+    <div class="panel-label">Model</div>
+    <div class="cam-row">
+      <label>Rotate X</label>
+      <input type="range" id="rot-x" min="-180" max="180" step="0.5" value="0">
+      <span class="cam-val" id="rot-x-val">0°</span>
+    </div>
+    <div class="cam-row">
+      <label>Rotate Y</label>
+      <input type="range" id="rot-y" min="-180" max="180" step="0.5" value="0">
+      <span class="cam-val" id="rot-y-val">0°</span>
+    </div>
+    <div class="cam-row">
+      <label>Rotate Z</label>
+      <input type="range" id="rot-z" min="-180" max="180" step="0.5" value="0">
+      <span class="cam-val" id="rot-z-val">0°</span>
+    </div>
+    <div class="cam-row spin-row">
+      <label>Spin</label>
+      <label class="checkbox-label"><input type="checkbox" id="spin-x"> X</label>
+      <label class="checkbox-label"><input type="checkbox" id="spin-y" checked> Y</label>
+      <label class="checkbox-label"><input type="checkbox" id="spin-z"> Z</label>
+    </div>
+    <div class="cam-row">
+      <label>Speed</label>
+      <input type="range" id="speed" min="0" max="5" step="0.1" value="1">
+      <button id="pause" style="font-size:11px; padding:3px 10px; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:#fff; border-radius:12px; cursor:pointer;">Pause</button>
+    </div>
+  </div>
+  <div id="right-panels">
+  <div id="camera-controls">
+    <div class="panel-label">Camera</div>
+    <div class="cam-row">
+      <label>Height</label>
+      <input type="range" id="cam-height" min="-2" max="2" step="0.01" value="0.2">
+      <span class="cam-val" id="cam-height-val">0.2</span>
+    </div>
+    <div class="cam-row">
+      <label>Distance</label>
+      <input type="range" id="cam-dist" min="1" max="8" step="0.01" value="3">
+      <span class="cam-val" id="cam-dist-val">3.0</span>
+    </div>
+    <div class="cam-row">
+      <label>Angle</label>
+      <input type="range" id="cam-angle" min="0" max="360" step="0.5" value="0">
+      <span class="cam-val" id="cam-angle-val">0°</span>
+    </div>
+    <div class="cam-row">
+      <label>FOV</label>
+      <input type="range" id="cam-fov" min="10" max="100" step="1" value="45">
+      <span class="cam-val" id="cam-fov-val">45°</span>
+    </div>
+    <div class="cam-row">
+      <label>Tilt</label>
+      <input type="range" id="cam-tilt" min="-1" max="1" step="0.01" value="0">
+      <span class="cam-val" id="cam-tilt-val">0.0</span>
+    </div>
+  </div>
+  <div id="light-controls">
+    <div class="panel-label">Light</div>
+    <div class="cam-row">
+      <label>Color</label>
+      <input type="color" id="light-color" value="#ffffff">
+    </div>
+    <div class="cam-row">
+      <label>Intensity</label>
+      <input type="range" id="light-intensity" min="0" max="5" step="0.05" value="1">
+      <span class="cam-val" id="light-intensity-val">1.0</span>
+    </div>
+    <div class="cam-row">
+      <label>Direction</label>
+      <input type="range" id="light-dir" min="0" max="360" step="1" value="45">
+      <span class="cam-val" id="light-dir-val">45°</span>
+    </div>
+    <div class="cam-row">
+      <label>Height</label>
+      <input type="range" id="light-height" min="0" max="10" step="0.1" value="4">
+      <span class="cam-val" id="light-height-val">4.0</span>
+    </div>
+    <div class="cam-row">
+      <label>Ambient</label>
+      <input type="range" id="light-ambient" min="0" max="2" step="0.05" value="0.3">
+      <span class="cam-val" id="light-ambient-val">0.3</span>
+    </div>
+    <div class="cam-row">
+      <label>Exposure</label>
+      <input type="range" id="light-exposure" min="0" max="3" step="0.05" value="1.2">
+      <span class="cam-val" id="light-exposure-val">1.2</span>
+    </div>
+    <div class="cam-row">
+      <label>Env Map</label>
+      <input type="range" id="light-env" min="0" max="3" step="0.05" value="1">
+      <span class="cam-val" id="light-env-val">1.0</span>
+    </div>
+  </div>
+  </div>
+  <div id="ui-hint">Press H to toggle UI</div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+    // Persistence helpers
+    const STORAGE_KEY = 'viewer-settings';
+    function loadSettings() {
+      try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch { return {}; }
+    }
+    function saveSettings(patch) {
+      const s = loadSettings();
+      Object.assign(s, patch);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+    }
+    const saved = loadSettings();
+
+    const scene = new THREE.Scene();
+    const initBg = saved.bgColor || '#111111';
+    scene.background = new THREE.Color(initBg);
+    document.getElementById('bg-color').value = initBg;
+
+    if (saved.matColor) {
+      document.getElementById('mat-color').value = saved.matColor;
+    }
+    if (saved.domeRot) {
+      document.getElementById('dome-rot').value = saved.domeRot;
+    }
+    const initLightColor = saved.lightColor || '#ffffff';
+    document.getElementById('light-color').value = initLightColor;
+    const initLightIntensity = saved.lightIntensity ?? 1;
+    document.getElementById('light-intensity').value = initLightIntensity;
+    document.getElementById('light-intensity-val').textContent = parseFloat(initLightIntensity).toFixed(1);
+    const initLightDir = saved.lightDir ?? 45;
+    document.getElementById('light-dir').value = initLightDir;
+    document.getElementById('light-dir-val').textContent = Math.round(initLightDir) + '°';
+    const initLightHeight = saved.lightHeight ?? 4;
+    document.getElementById('light-height').value = initLightHeight;
+    document.getElementById('light-height-val').textContent = parseFloat(initLightHeight).toFixed(1);
+    const initLightAmbient = saved.lightAmbient ?? 0.3;
+    document.getElementById('light-ambient').value = initLightAmbient;
+    document.getElementById('light-ambient-val').textContent = parseFloat(initLightAmbient).toFixed(1);
+    const initExposure = saved.lightExposure ?? 1.2;
+    document.getElementById('light-exposure').value = initExposure;
+    document.getElementById('light-exposure-val').textContent = parseFloat(initExposure).toFixed(1);
+    const initEnv = saved.lightEnv ?? 1;
+    document.getElementById('light-env').value = initEnv;
+    document.getElementById('light-env-val').textContent = parseFloat(initEnv).toFixed(1);
+
+    const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.01, 100);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(devicePixelRatio);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = initExposure;
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+
+    // Environment map for realistic metal reflections
+    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+    const envTexture = pmremGenerator.fromScene(new RoomEnvironment()).texture;
+    scene.environment = envTexture;
+    scene.environmentIntensity = initEnv;
+    pmremGenerator.dispose();
+
+    // Lights
+    const ambientLight = new THREE.AmbientLight(initLightColor, initLightAmbient);
+    scene.add(ambientLight);
+    const dirLight1 = new THREE.DirectionalLight(initLightColor, initLightIntensity);
+    const dirRad = THREE.MathUtils.degToRad(initLightDir);
+    dirLight1.position.set(Math.sin(dirRad) * 5, initLightHeight, Math.cos(dirRad) * 5);
+    scene.add(dirLight1);
+
+    // State
+    let pivot = null;
+    let innerObj = null;
+    let spinning = true;
+    let speedVal = 1;
+    let spinAxes = { x: false, y: true, z: false };
+
+    // Override material (used when color picker is changed)
+    let useModelTexture = true;
+    let overrideMaterial = null;
+
+    function applyMaterial() {
+      if (!innerObj) return;
+      innerObj.traverse((child) => {
+        if (child.isMesh) {
+          if (useModelTexture && child.userData.originalMaterial) {
+            child.material = child.userData.originalMaterial;
+          } else if (overrideMaterial) {
+            child.material = overrideMaterial;
+          }
+        }
+      });
+    }
+
+    // Load a model into the scene
+    const gltfLoader = new GLTFLoader();
+    const objLoader = new OBJLoader();
+
+    function loadModel(obj) {
+      // Remove existing model
+      if (pivot) scene.remove(pivot);
+
+      // Store original materials
+      obj.traverse((child) => {
+        if (child.isMesh) {
+          child.userData.originalMaterial = child.material;
+        }
+      });
+
+      // Center and scale
+      const box = new THREE.Box3().setFromObject(obj);
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const scale = 2.0 / maxDim;
+
+      obj.scale.setScalar(scale);
+
+      box.setFromObject(obj);
+      box.getCenter(center);
+      obj.position.sub(center);
+
+      // Wrap in a pivot group
+      pivot = new THREE.Group();
+      pivot.add(obj);
+      scene.add(pivot);
+      innerObj = obj;
+
+      camera.position.set(0, 0.2, 3);
+      controls.target.set(0, 0, 0);
+      controls.update();
+
+      // Apply material override if active
+      if (!useModelTexture && overrideMaterial) {
+        applyMaterial();
+      }
+    }
+
+    // Load default model
+    gltfLoader.load('./totem.glb', (gltf) => {
+      loadModel(gltf.scene);
+
+      // Restore saved material override
+      if (saved.useModelTexture === false && saved.matColor) {
+        useModelTexture = false;
+        overrideMaterial = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(saved.matColor),
+          roughness: 0.55,
+          metalness: 0.85,
+        });
+        applyMaterial();
+      }
+    },
+    (progress) => console.log('Loading...', progress.loaded),
+    (error) => console.error('Error loading model:', error)
+    );
+
+    // Import model button
+    document.getElementById('import-btn').addEventListener('click', () => {
+      document.getElementById('import-file').click();
+    });
+
+    document.getElementById('import-file').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      const name = file.name.toLowerCase();
+
+      if (name.endsWith('.obj')) {
+        objLoader.load(url, (obj) => {
+          loadModel(obj);
+          URL.revokeObjectURL(url);
+        });
+      } else {
+        gltfLoader.load(url, (gltf) => {
+          loadModel(gltf.scene);
+          URL.revokeObjectURL(url);
+        });
+      }
+      e.target.value = '';
+    });
+
+    // Controls
+    document.getElementById('speed').addEventListener('input', (e) => {
+      speedVal = parseFloat(e.target.value);
+    });
+
+    const pauseBtn = document.getElementById('pause');
+    pauseBtn.addEventListener('click', () => {
+      spinning = !spinning;
+      pauseBtn.textContent = spinning ? 'Pause' : 'Spin';
+    });
+
+    document.getElementById('mat-color').addEventListener('input', (e) => {
+      useModelTexture = false;
+      overrideMaterial = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(e.target.value),
+        roughness: 0.55,
+        metalness: 0.85,
+      });
+      applyMaterial();
+      saveSettings({ matColor: e.target.value, useModelTexture: false });
+    });
+
+    // Double-click color swatch to restore original texture
+    document.getElementById('mat-color').addEventListener('dblclick', () => {
+      useModelTexture = true;
+      applyMaterial();
+      saveSettings({ useModelTexture: true });
+    });
+
+    document.getElementById('light-color').addEventListener('input', (e) => {
+      const c = new THREE.Color(e.target.value);
+      ambientLight.color.copy(c);
+      dirLight1.color.copy(c);
+      saveSettings({ lightColor: e.target.value });
+    });
+
+    document.getElementById('light-intensity').addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value);
+      dirLight1.intensity = v;
+      document.getElementById('light-intensity-val').textContent = v.toFixed(1);
+      saveSettings({ lightIntensity: v });
+    });
+
+    document.getElementById('light-dir').addEventListener('input', (e) => {
+      const deg = parseFloat(e.target.value);
+      const rad = THREE.MathUtils.degToRad(deg);
+      const h = parseFloat(document.getElementById('light-height').value);
+      dirLight1.position.set(Math.sin(rad) * 5, h, Math.cos(rad) * 5);
+      document.getElementById('light-dir-val').textContent = Math.round(deg) + '°';
+      saveSettings({ lightDir: deg });
+    });
+
+    document.getElementById('light-height').addEventListener('input', (e) => {
+      const h = parseFloat(e.target.value);
+      const deg = parseFloat(document.getElementById('light-dir').value);
+      const rad = THREE.MathUtils.degToRad(deg);
+      dirLight1.position.set(Math.sin(rad) * 5, h, Math.cos(rad) * 5);
+      document.getElementById('light-height-val').textContent = h.toFixed(1);
+      saveSettings({ lightHeight: h });
+    });
+
+    document.getElementById('light-ambient').addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value);
+      ambientLight.intensity = v;
+      document.getElementById('light-ambient-val').textContent = v.toFixed(1);
+      saveSettings({ lightAmbient: v });
+    });
+
+    document.getElementById('light-exposure').addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value);
+      renderer.toneMappingExposure = v;
+      document.getElementById('light-exposure-val').textContent = v.toFixed(1);
+      saveSettings({ lightExposure: v });
+    });
+
+    document.getElementById('light-env').addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value);
+      scene.environmentIntensity = v;
+      document.getElementById('light-env-val').textContent = v.toFixed(1);
+      saveSettings({ lightEnv: v });
+    });
+
+    document.getElementById('bg-color').addEventListener('input', (e) => {
+      scene.background = new THREE.Color(e.target.value);
+      saveSettings({ bgColor: e.target.value });
+    });
+
+    // Skydome
+    let domeMesh = null;
+    const domeGeometry = new THREE.SphereGeometry(40, 64, 32);
+    const domeBtnEl = document.getElementById('dome-btn');
+    const domeFileEl = document.getElementById('dome-file');
+    const domeClearEl = document.getElementById('dome-clear');
+
+    domeBtnEl.addEventListener('click', () => domeFileEl.click());
+
+    function loadDomeFromURL(url, persist) {
+      const textureLoader = new THREE.TextureLoader();
+      textureLoader.load(url, (tex) => {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        if (domeMesh) scene.remove(domeMesh);
+        const domeMat = new THREE.MeshBasicMaterial({
+          map: tex,
+          side: THREE.BackSide,
+        });
+        domeMesh = new THREE.Mesh(domeGeometry, domeMat);
+        const rot = parseFloat(document.getElementById('dome-rot').value);
+        domeMesh.rotation.y = THREE.MathUtils.degToRad(rot);
+        scene.add(domeMesh);
+        scene.background = null;
+        domeClearEl.style.display = '';
+        document.getElementById('dome-rot-label').style.display = '';
+        document.getElementById('dome-rot').style.display = '';
+        if (persist) saveSettings({ domeImage: persist });
+      });
+    }
+
+    domeFileEl.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataURL = reader.result;
+        loadDomeFromURL(dataURL, dataURL);
+      };
+      reader.readAsDataURL(file);
+    });
+
+    domeClearEl.addEventListener('click', () => {
+      if (domeMesh) {
+        scene.remove(domeMesh);
+        domeMesh = null;
+      }
+      scene.background = new THREE.Color(document.getElementById('bg-color').value);
+      domeClearEl.style.display = 'none';
+      document.getElementById('dome-rot-label').style.display = 'none';
+      document.getElementById('dome-rot').style.display = 'none';
+      document.getElementById('dome-rot').value = 0;
+      domeFileEl.value = '';
+      saveSettings({ domeImage: null, domeRot: 0 });
+    });
+
+    document.getElementById('dome-rot').addEventListener('input', (e) => {
+      if (domeMesh) {
+        domeMesh.rotation.y = THREE.MathUtils.degToRad(parseFloat(e.target.value));
+      }
+      saveSettings({ domeRot: e.target.value });
+    });
+
+    // Restore saved dome image
+    if (saved.domeImage) {
+      loadDomeFromURL(saved.domeImage, null);
+    }
+
+    // Camera controls
+    const camHeight = document.getElementById('cam-height');
+    const camDist = document.getElementById('cam-dist');
+    const camAngle = document.getElementById('cam-angle');
+    const camFov = document.getElementById('cam-fov');
+    const camTilt = document.getElementById('cam-tilt');
+
+    function updateCamera() {
+      const h = parseFloat(camHeight.value);
+      const d = parseFloat(camDist.value);
+      const a = THREE.MathUtils.degToRad(parseFloat(camAngle.value));
+      const fov = parseFloat(camFov.value);
+      const tilt = parseFloat(camTilt.value);
+
+      camera.position.set(Math.sin(a) * d, h, Math.cos(a) * d);
+      controls.target.set(0, tilt, 0);
+      camera.fov = fov;
+      camera.updateProjectionMatrix();
+      controls.update();
+
+      document.getElementById('cam-height-val').textContent = h.toFixed(1);
+      document.getElementById('cam-dist-val').textContent = d.toFixed(1);
+      document.getElementById('cam-angle-val').textContent = Math.round(parseFloat(camAngle.value)) + '°';
+      document.getElementById('cam-fov-val').textContent = Math.round(fov) + '°';
+      document.getElementById('cam-tilt-val').textContent = tilt.toFixed(1);
+    }
+
+    camHeight.addEventListener('input', updateCamera);
+    camDist.addEventListener('input', updateCamera);
+    camAngle.addEventListener('input', updateCamera);
+    camFov.addEventListener('input', updateCamera);
+    camTilt.addEventListener('input', updateCamera);
+
+    // Model rotation controls
+    const rotX = document.getElementById('rot-x');
+    const rotY = document.getElementById('rot-y');
+    const rotZ = document.getElementById('rot-z');
+
+    function updateModelRotation() {
+      if (!innerObj) return;
+      innerObj.rotation.x = THREE.MathUtils.degToRad(parseFloat(rotX.value));
+      innerObj.rotation.y = THREE.MathUtils.degToRad(parseFloat(rotY.value));
+      innerObj.rotation.z = THREE.MathUtils.degToRad(parseFloat(rotZ.value));
+      document.getElementById('rot-x-val').textContent = Math.round(parseFloat(rotX.value)) + '°';
+      document.getElementById('rot-y-val').textContent = Math.round(parseFloat(rotY.value)) + '°';
+      document.getElementById('rot-z-val').textContent = Math.round(parseFloat(rotZ.value)) + '°';
+    }
+
+    rotX.addEventListener('input', updateModelRotation);
+    rotY.addEventListener('input', updateModelRotation);
+    rotZ.addEventListener('input', updateModelRotation);
+
+    document.getElementById('spin-x').addEventListener('change', (e) => { spinAxes.x = e.target.checked; });
+    document.getElementById('spin-y').addEventListener('change', (e) => { spinAxes.y = e.target.checked; });
+    document.getElementById('spin-z').addEventListener('change', (e) => { spinAxes.z = e.target.checked; });
+
+    // Resize
+    window.addEventListener('resize', () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+
+    // Animate
+    function animate() {
+      requestAnimationFrame(animate);
+      if (pivot && spinning) {
+        const delta = 0.01 * speedVal;
+        if (spinAxes.x) pivot.rotation.x += delta;
+        if (spinAxes.y) pivot.rotation.y += delta;
+        if (spinAxes.z) pivot.rotation.z += delta;
+      }
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // Toggle UI with H key
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'h' || e.key === 'H') {
+        document.body.classList.toggle('ui-hidden');
+      }
+    });
+  </script>
+</body>
+</html>
