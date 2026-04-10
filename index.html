@@ -117,6 +117,7 @@
     <input type="file" id="import-file" accept=".glb,.gltf,.obj" style="display:none">
     <label>Color</label>
     <input type="color" id="mat-color" value="#8B7355">
+    <label class="checkbox-label"><input type="checkbox" id="mat-override"> Override</label>
     <label>BG</label>
     <input type="color" id="bg-color" value="#111111">
     <button id="dome-btn">Dome Image</button>
@@ -258,6 +259,7 @@
     if (saved.matColor) {
       document.getElementById('mat-color').value = saved.matColor;
     }
+    document.getElementById('mat-override').checked = saved.useModelTexture === false;
     if (saved.domeRot) {
       document.getElementById('dome-rot').value = saved.domeRot;
     }
@@ -434,21 +436,33 @@
     });
 
     document.getElementById('mat-color').addEventListener('input', (e) => {
-      useModelTexture = false;
       overrideMaterial = new THREE.MeshStandardMaterial({
         color: new THREE.Color(e.target.value),
         roughness: 0.55,
         metalness: 0.85,
       });
+      // Turning the color picker enables the override automatically
+      document.getElementById('mat-override').checked = true;
+      useModelTexture = false;
       applyMaterial();
       saveSettings({ matColor: e.target.value, useModelTexture: false });
     });
 
-    // Double-click color swatch to restore original texture
-    document.getElementById('mat-color').addEventListener('dblclick', () => {
-      useModelTexture = true;
+    document.getElementById('mat-override').addEventListener('change', (e) => {
+      if (e.target.checked) {
+        useModelTexture = false;
+        if (!overrideMaterial) {
+          overrideMaterial = new THREE.MeshStandardMaterial({
+            color: new THREE.Color(document.getElementById('mat-color').value),
+            roughness: 0.55,
+            metalness: 0.85,
+          });
+        }
+      } else {
+        useModelTexture = true;
+      }
       applyMaterial();
-      saveSettings({ useModelTexture: true });
+      saveSettings({ useModelTexture });
     });
 
     document.getElementById('light-color').addEventListener('input', (e) => {
