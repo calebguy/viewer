@@ -35,6 +35,11 @@
       font-size: 13px;
     }
     #controls button:hover { background: rgba(255,255,255,0.2); }
+    #controls button:disabled {
+      opacity: 0.45;
+      cursor: default;
+    }
+    #controls button:disabled:hover { background: rgba(255,255,255,0.1); }
     #camera-controls {
       display: flex;
       flex-direction: column;
@@ -114,6 +119,7 @@
 <body>
   <div id="controls">
     <button id="import-btn">Import Model</button>
+    <button id="remove-model" disabled>Remove Model</button>
     <input type="file" id="import-file" accept=".glb,.gltf,.obj" style="display:none">
     <label>Color</label>
     <input type="color" id="mat-color" value="#8B7355">
@@ -318,6 +324,56 @@
     let spinning = true;
     let speedVal = 1;
     let spinAxes = { x: false, y: true, z: false };
+    const modelControlsEl = document.getElementById('model-controls');
+    const removeModelBtn = document.getElementById('remove-model');
+
+    function setModelControlsEnabled(enabled) {
+      removeModelBtn.disabled = !enabled;
+      modelControlsEl.style.display = enabled ? '' : 'none';
+    }
+
+    function collectMaterials(material, materials) {
+      if (Array.isArray(material)) {
+        for (const item of material) collectMaterials(item, materials);
+      } else if (material && material !== overrideMaterial) {
+        materials.add(material);
+      }
+    }
+
+    function disposeModel(obj) {
+      const geometries = new Set();
+      const materials = new Set();
+      const textures = new Set();
+
+      obj.traverse((child) => {
+        if (!child.isMesh) return;
+        if (child.geometry) geometries.add(child.geometry);
+        collectMaterials(child.material, materials);
+        collectMaterials(child.userData.originalMaterial, materials);
+      });
+
+      for (const material of materials) {
+        for (const value of Object.values(material)) {
+          if (value && value.isTexture) textures.add(value);
+        }
+      }
+      for (const geometry of geometries) geometry.dispose();
+      for (const texture of textures) texture.dispose();
+      for (const material of materials) material.dispose();
+    }
+
+    function removeModel(persist = true) {
+      if (pivot) {
+        scene.remove(pivot);
+        disposeModel(pivot);
+      }
+      pivot = null;
+      innerObj = null;
+      setModelControlsEnabled(false);
+      if (persist) saveSettings({ modelRemoved: true });
+    }
+
+    setModelControlsEnabled(false);
 
     // Override material (used when color picker is changed)
     let useModelTexture = true;
@@ -341,9 +397,7 @@
     const objLoader = new OBJLoader();
 
     function loadModel(obj) {
-      // Remove existing model
-      if (pivot) scene.remove(pivot);
-
+      removeModel(false);
       // Store original materials
       obj.traverse((child) => {
         if (child.isMesh) {
@@ -378,31 +432,40 @@
       if (!useModelTexture && overrideMaterial) {
         applyMaterial();
       }
+      setModelControlsEnabled(true);
+      saveSettings({ modelRemoved: false });
     }
 
     // Load default model
-    gltfLoader.load('./totem.glb', (gltf) => {
-      loadModel(gltf.scene);
+    if (!saved.modelRemoved) {
+      gltfLoader.load('./totem.glb', (gltf) => {
+        loadModel(gltf.scene);
 
-      // Restore saved material override
-      if (saved.useModelTexture === false && saved.matColor) {
-        useModelTexture = false;
-        overrideMaterial = new THREE.MeshStandardMaterial({
-          color: new THREE.Color(saved.matColor),
-          roughness: 0.55,
-          metalness: 0.85,
-        });
-        applyMaterial();
+        // Restore saved material override
+        if (saved.useModelTexture === false && saved.matColor) {
+          useModelTexture = false;
+          overrideMaterial = new THREE.MeshStandardMaterial({
+            color: new THREE.Color(saved.matColor),
+            roughness: 0.55,
+            metalness: 0.85,
+          });
+          applyMaterial();
+        }
+      },
+      (progress) => console.log('Loading...', progress.loaded),
+      (error) => {
+        console.error('Error loading model:', error);
+        setModelControlsEnabled(false);
       }
-    },
-    (progress) => console.log('Loading...', progress.loaded),
-    (error) => console.error('Error loading model:', error)
-    );
+      );
+    }
 
     // Import model button
     document.getElementById('import-btn').addEventListener('click', () => {
       document.getElementById('import-file').click();
     });
+
+    removeModelBtn.addEventListener('click', () => removeModel(true));
 
     document.getElementById('import-file').addEventListener('change', (e) => {
       const file = e.target.files[0];
